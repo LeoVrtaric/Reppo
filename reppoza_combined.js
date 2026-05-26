@@ -268,7 +268,7 @@ if (window.opener) {
     // ========================================================
 
     // PROMIJENI OVO u svoju pastebin raw URL nakon uploada!
-    const scriptUrl = "OVDJE_STAVI_PASTEBIN_RAW_URL";
+    const scriptUrl = "https://raw.githubusercontent.com/LeoVrtaric/Reppo/main/reppoza_combined.js";
 
     let RedniBroj = prompt("Upiši redni broj tužbe");
     let URLovi = [];
