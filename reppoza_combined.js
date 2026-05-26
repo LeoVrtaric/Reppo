@@ -1,7 +1,3 @@
-// ============================================================
-// KOMBINIRANI SCRIPT - detektira parent ili child prozor
-// ============================================================
-
 if (window.opener) {
 
     // ========================================================
@@ -21,9 +17,7 @@ if (window.opener) {
         const script = document.createElement("script");
         script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js";
         document.head.appendChild(script);
-        script.onload = function () {
-            console.log("JSZip loaded successfully");
-        };
+        script.onload = function () { console.log("JSZip loaded successfully"); };
     }
     DodajJSZip();
 
@@ -84,9 +78,7 @@ if (window.opener) {
                 DuplicirajStupceIRetke(Prefiks, Sufiks);
             }
 
-            function StrukturirajTablicu() {
-                popuniDodatne();
-            }
+            function StrukturirajTablicu() { popuniDodatne(); }
 
             function DodajOpisILink() {
                 const kopija = document.querySelector('#ctl00_ContentPlaceHolder1_apJournal_content_ucJournalEntry_grdContactJournal > tbody > tr.header > th:nth-child(4)').cloneNode(true);
@@ -100,9 +92,7 @@ if (window.opener) {
                 const novo = prvoDijete.parentNode.insertBefore(kopija5, prvoDijete);
                 let anchor = document.createElement('a');
                 anchor.href = window.location.href;
-                while (novo.firstChild) {
-                    anchor.appendChild(novo.firstChild);
-                }
+                while (novo.firstChild) { anchor.appendChild(novo.firstChild); }
                 novo.appendChild(anchor);
                 novo.querySelector('a').textContent = window.location.href;
             }
@@ -123,9 +113,7 @@ if (window.opener) {
                 }
             }
 
-            function generateHTMLTable() {
-                return `<table>${allRows.join('')}</table>`;
-            }
+            function generateHTMLTable() { return `<table>${allRows.join('')}</table>`; }
 
             function idiNaSljedecu() {
                 if (flag == 1) return false;
@@ -223,7 +211,7 @@ if (window.opener) {
             if (urls.length === 0) {
                 let brojKontakta = document.getElementById("ctl00_ContentPlaceHolder1_apDetails_header_lblDetails").textContent.match(/\d+/g)[0];
                 const zip = new JSZip();
-                const ParentDir = zip.folder(brojKontakta + "-Prazna reppoza");
+                zip.folder(brojKontakta + "-Prazna reppoza");
                 const zipBlob = await zip.generateAsync({ type: "blob" });
                 window.opener.postMessage(zipBlob, "https://reppozaebc.sitshr.net:2376/");
             } else {
@@ -236,12 +224,10 @@ if (window.opener) {
                     try {
                         const zip = new JSZip();
                         const parentDir = zip.folder(brojKontakta);
-                        const blobs = [];
                         for (let i = 0; i < urls.length; i++) {
                             const response = await fetch(urls[i]);
-                            if (!response.ok) { throw new Error(`Failed to fetch file from `); }
+                            if (!response.ok) { throw new Error(`Failed to fetch file`); }
                             const blob = await response.blob();
-                            blobs.push(blob);
                             parentDir.file(imenaDatoteka[i], blob);
                         }
                         const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -251,8 +237,8 @@ if (window.opener) {
                     }
                 } else {
                     const zip = new JSZip();
-                    let brojKontakta = document.getElementById("ctl00_ContentPlaceHolder1_apDetails_header_lblDetails").textContent.match(/\d+/g)[0];
-                    const ParentDir = zip.folder("GreskaUReppozi-" + brojKontakta);
+                    let brojKontakta2 = document.getElementById("ctl00_ContentPlaceHolder1_apDetails_header_lblDetails").textContent.match(/\d+/g)[0];
+                    zip.folder("GreskaUReppozi-" + brojKontakta2);
                     const zipBlob = await zip.generateAsync({ type: "blob" });
                     window.opener.postMessage(zipBlob, "https://reppozaebc.sitshr.net:2376/");
                     alert("Greska u reppozi, treba slati mail!");
@@ -267,7 +253,6 @@ if (window.opener) {
     // PARENT PROZOR - glavna logika
     // ========================================================
 
-    // PROMIJENI OVO u svoju pastebin raw URL nakon uploada!
     const scriptUrl = "https://raw.githubusercontent.com/LeoVrtaric/Reppo/main/reppoza_combined.js";
 
     let RedniBroj = prompt("Upiši redni broj tužbe");
@@ -354,7 +339,6 @@ if (window.opener) {
         });
         openedWindows = URLovi.map(url => window.open(url, '_blank'));
 
-        // Polling - čeka da se element učita, ne fiksni timeout
         openedWindows.forEach(prozor => {
             const provjeri = setInterval(() => {
                 try {
