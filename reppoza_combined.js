@@ -161,8 +161,22 @@ if (window.opener) {
                 }
             }
 
-            StrukturirajTablicu();
-            UhvatiSve();
+            // Polling - čeka da svi elementi budu u DOMu prije pokretanja
+            function waitForElements(callback) {
+                const provjeri = setInterval(() => {
+                    const el1 = document.getElementById('ctl00_ContentPlaceHolder1_apDetails_header_lblDetails');
+                    const el2 = document.getElementById('ctl00_ContentPlaceHolder1_apDetails_content_ucContactInfo_lblVrstaKontakta');
+                    if (el1 && el2) {
+                        clearInterval(provjeri);
+                        callback();
+                    }
+                }, 300);
+            }
+
+            waitForElements(() => {
+                StrukturirajTablicu();
+                UhvatiSve();
+            });
         });
     }
 
