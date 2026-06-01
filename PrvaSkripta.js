@@ -579,15 +579,11 @@ async function spojiSve(blobovi) {
 }
 
 function spojiSveTablice() {
-    arrayTablica.forEach((t, i) => {
+    arrayTablica.forEach((t) => {
         if (!t) return;
-        const label = arrayLabels[i] || '';
-        // FIX: separator s labelom između kontakata u XLS-u
-        const sep = `<tr><td colspan="99" style="background:#2870ED;color:#ffffff;` +
-                    `font-weight:bold;padding:4px 8px;font-family:Arial,sans-serif;` +
-                    `font-size:10pt;border:none;">${label}</td></tr>`;
-        PunaTablica += sep + t;
+        PunaTablica += t;
     });
+
     return new Blob([
         `<html xmlns:o="urn:schemas-microsoft-com:office:office"
                xmlns:x="urn:schemas-microsoft-com:office:excel">
