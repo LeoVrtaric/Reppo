@@ -192,8 +192,10 @@ function SkiniPodatke() {
         window.opener?.postMessage(await zip.generateAsync({ type: 'blob' }), targetOrigin);
     }
 
+    // FIX: okreniStringiSplitaj sad dekodira URL, pa filename ima literal ','
+    //      umjesto '%2c' – mijenjamo provjeru u includes(',')
     function provjeriZareze(urlovi) {
-        return !urlovi.some(u => okreniStringiSplitaj(u).match(/%2c/i));
+        return !urlovi.some(u => okreniStringiSplitaj(u).includes(','));
     }
 
     const TABLE_ID  = 'ctl00_ContentPlaceHolder1_apAppendFile_content_ucFileUpload_grdFileDocument';
