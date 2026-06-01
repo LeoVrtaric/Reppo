@@ -14,7 +14,7 @@ let messageListenerAdded = false;
 let savedImePrezime = '';
 
 const scriptUrl =
-    "https://raw.githubusercontent.com/Matkach200/ReppozaSkripta/refs/heads/main/script.js";
+    "https://raw.githubusercontent.com/Matkach200/ReppozaSkripta/main/script.js";
 
 // ── Pomoćne funkcije ──────────────────────────────────────────────────────────
 
