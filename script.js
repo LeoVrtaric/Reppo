@@ -7,9 +7,14 @@
 
 let URLovi = [];
 
+// FIX: a.href enkodira backslashe kao %5C – stara reverse+split logika
+//      ih nije pronalazila. Sad decodiramo URL pa uzimamo zadnji segment.
 function okreniStringiSplitaj(string) {
-    return string.split('').reverse().join('')
-        .split(/\\/)[0].split('').reverse().join('');
+    let decoded;
+    try { decoded = decodeURIComponent(string); } catch (e) { decoded = string; }
+    // Uzimamo zadnji dio po backslashu (stvarno ime datoteke)
+    const parts = decoded.split('\\');
+    return parts[parts.length - 1];
 }
 
 function DodajJSZip() {
