@@ -285,17 +285,42 @@ function fetchAndEvalScript(prozor) {
         .catch(err => { console.error('Greška skripte:', err); addLog('⚠ Greška učitavanja skripte', 'rli-err'); });
 }
 
-// FIX: polling + prozor.closed check
+// FIX: 'interactive' je dovoljno – DOM spreman čim je HTML parsiran,
+//      ne čekamo AJAX pozive koji mogu visiti minutama.
+//      injected flag sprječava dvostruko injektiranje.
+//      Hard timeout od 20s injektira bez obzira na readyState.
 function cekajIUbaciSkriptu(prozor) {
-    const provjeri = () => {
-        if (prozor.closed) { addLog('⚠ Prozor zatvoren prije injektiranja', 'rli-warn'); return; }
-        try {
-            if (prozor.document.readyState === 'complete' && prozor.location.href !== 'about:blank') {
-                fetchAndEvalScript(prozor);
-            } else { setTimeout(provjeri, 300); }
-        } catch (e) { setTimeout(provjeri, 300); }
+    let injected = false;
+
+    const inject = () => {
+        if (injected || prozor.closed) return;
+        injected = true;
+        fetchAndEvalScript(prozor);
     };
+
+    const provjeri = () => {
+        if (injected || prozor.closed) return;
+        try {
+            const state = prozor.document.readyState;
+            const url   = prozor.location.href;
+            if ((state === 'interactive' || state === 'complete') && url !== 'about:blank') {
+                inject();
+            } else {
+                setTimeout(provjeri, 300);
+            }
+        } catch (e) {
+            setTimeout(provjeri, 300);
+        }
+    };
+
     provjeri();
+    // Sigurnosna mreža – injektiramo nakon 20s bez obzira što se dogodi
+    setTimeout(() => {
+        if (!injected && !prozor.closed) {
+            addLog('⚠ Timeout – prisilno injektiranje', 'rli-warn');
+            inject();
+        }
+    }, 20000);
 }
 
 // ── Message handler ───────────────────────────────────────────────────────────
