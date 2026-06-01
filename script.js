@@ -1,18 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// script.js – v3
-//  FIX: waitForElementToAppear ima timeout + fallback (šalje prazan ZIP)
-//       Guard za praznu tablicu u popuniDodatne()
-//       try/catch oko cijelog SkiniPodatke – garantira odgovor roditeljskom prozoru
+// script.js – v4
+//  1. Globalni try-catch – garantira odgovor roditeljskom prozoru u svakom slučaju
+//  2. Content-Disposition za točno ime datoteke (rješava + vs space problem)
 // ─────────────────────────────────────────────────────────────────────────────
 
 let URLovi = [];
 
-// FIX: a.href enkodira backslashe kao %5C – stara reverse+split logika
-//      ih nije pronalazila. Sad decodiramo URL pa uzimamo zadnji segment.
 function okreniStringiSplitaj(string) {
     let decoded;
     try { decoded = decodeURIComponent(string); } catch (e) { decoded = string; }
-    // Uzimamo zadnji dio po backslashu (stvarno ime datoteke)
     const parts = decoded.split('\\');
     return parts[parts.length - 1];
 }
@@ -84,26 +80,23 @@ async function TablicaExport() {
 
         function DodajOpisILink(opisIframe) {
             const tbody = `${TABLICA} > tbody`;
+            const novaKolona = document.querySelector(`${tbody} > tr.header > th:nth-child(4)`).cloneNode(true);
+            novaKolona.textContent = 'Prvi Opis';
+            document.querySelector(`${tbody} > tr.header`).appendChild(novaKolona);
 
-            const zaglavlje = document.querySelector(`${tbody} > tr.header > th:nth-child(4)`).cloneNode(true);
-            zaglavlje.textContent = 'Prvi Opis';
-            document.querySelector(`${tbody} > tr.header`).appendChild(zaglavlje);
+            const novaCelija = document.querySelector(`${tbody} > tr:nth-child(2) > td:nth-child(4)`).cloneNode(true);
+            novaCelija.textContent = opisIframe.contentDocument.querySelector('body').textContent;
+            document.querySelector(`${tbody} > tr:nth-child(2)`).appendChild(novaCelija);
 
-            const opCelija = document.querySelector(`${tbody} > tr:nth-child(2) > td:nth-child(4)`).cloneNode(true);
-            opCelija.textContent = opisIframe.contentDocument.querySelector('body').textContent;
-            document.querySelector(`${tbody} > tr:nth-child(2)`).appendChild(opCelija);
-
-            const tbodyEl = document.querySelector(tbody);
+            const tablicaTbody = document.querySelector(tbody);
             const noviRed = document.querySelector(`${tbody} > tr:nth-child(2)`).cloneNode(false);
-            tbodyEl.insertBefore(noviRed, tbodyEl.firstElementChild);
-
+            tablicaTbody.insertBefore(noviRed, tablicaTbody.firstElementChild);
             const td = document.createElement('td');
             const a  = document.createElement('a');
             a.href = window.location.href; a.textContent = window.location.href;
             td.appendChild(a); noviRed.appendChild(td);
         }
 
-        // FIX: guard za praznu tablicu
         async function popuniDodatne() {
             const prviRedak = document.querySelector(`${TABLICA} > tbody > tr:nth-child(2)`);
             if (!prviRedak) { console.warn('Journal je prazan'); return; }
@@ -112,7 +105,6 @@ async function TablicaExport() {
             const spojeno = id => get(id).textContent + get(id).nextElementSibling.textContent;
 
             const opisIframe = await waitForIframe(OPIS_ID);
-
             DodPod.push(get('ctl00_ContentPlaceHolder1_apDetails_header_lblDetails').textContent);
             DodPod.push(spojeno('ctl00_ContentPlaceHolder1_apDetails_content_ucContactInfo_lblVrstaKontakta'));
             DodPod.push(spojeno('ctl00_ContentPlaceHolder1_apDetails_content_ucContactInfo_lblOib'));
@@ -164,20 +156,33 @@ async function TablicaExport() {
             }
         }
 
-        async function init() {
-            await popuniDodatne();
-            await UhvatiSve();
-        }
+        async function init() { await popuniDodatne(); await UhvatiSve(); }
         init().catch(err => { console.error('Init greška:', err); resolve(); });
     });
 }
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ── Start – globalni try-catch garantira odgovor roditeljskom prozoru ─────────
 
 (async () => {
-    await DodajJSZip();
-    await TablicaExport();
-    SkiniPodatke();
+    try {
+        await DodajJSZip();
+        await TablicaExport();
+        SkiniPodatke();
+    } catch (e) {
+        console.error('Fatalna greška script.js:', e);
+        // Šalji error ZIP da roditelj ne ostane vječno čekati
+        try {
+            const targetOrigin = window.opener?.location?.origin || '*';
+            const id = document.getElementById('ctl00_ContentPlaceHolder1_apDetails_header_lblDetails')
+                ?.textContent?.match(/\d+/g)?.[0] || 'nepoznato';
+            if (window.JSZip) {
+                const zip = new JSZip();
+                zip.folder(`FatalnaGreška-${id}`);
+                const blob = await zip.generateAsync({ type: 'blob' });
+                window.opener?.postMessage(blob, targetOrigin);
+            }
+        } catch (e2) { console.error('Greška pri slanju fatalne greške:', e2); }
+    }
 })();
 
 // ── Preuzimanje privitaka ─────────────────────────────────────────────────────
@@ -185,15 +190,12 @@ async function TablicaExport() {
 function SkiniPodatke() {
     const targetOrigin = window.opener?.location?.origin || '*';
 
-    // FIX: svaka greška šalje prazan zip – roditelj nikad ne ostaje bez odgovora
     async function sendError(label) {
         const zip = new JSZip();
         zip.folder(label);
         window.opener?.postMessage(await zip.generateAsync({ type: 'blob' }), targetOrigin);
     }
 
-    // FIX: okreniStringiSplitaj sad dekodira URL, pa filename ima literal ','
-    //      umjesto '%2c' – mijenjamo provjeru u includes(',')
     function provjeriZareze(urlovi) {
         return !urlovi.some(u => okreniStringiSplitaj(u).includes(','));
     }
@@ -201,50 +203,37 @@ function SkiniPodatke() {
     const TABLE_ID  = 'ctl00_ContentPlaceHolder1_apAppendFile_content_ucFileUpload_grdFileDocument';
     const HEADER_ID = 'ctl00_ContentPlaceHolder1_apAppendFile_header';
 
-    // FIX: provjeri je li tablica već u DOM-u PRIJE klika.
-    // Problem: header je toggle – ako je sekcija već otvorena, klik bi je ZATVORIO,
-    // a observer nikad ne vidi element koji se pojavljuje (već je bio tamo).
     async function dohvatiPrivitke() {
         const existing = document.getElementById(TABLE_ID);
         if (existing) {
-            // Tablica je već u DOM-u – uzmi direktno, bez klika
             existing.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
             return;
         }
-
-        // Tablica nije u DOM-u – trebamo klik da je učitamo
         await new Promise(resolve => {
             let found = false;
-
             const timer = setTimeout(() => {
                 obs.disconnect();
                 if (!found) {
                     found = true;
-                    // Zadnji pokušaj direktnog dohvata
                     const el = document.getElementById(TABLE_ID);
                     if (el) el.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
                     else console.warn('Privici nisu pronađeni nakon 10s');
                     resolve();
                 }
             }, 10000);
-
             const obs = new MutationObserver(() => {
                 const el = document.getElementById(TABLE_ID);
                 if (el && !found) {
-                    found = true;
-                    obs.disconnect();
-                    clearTimeout(timer);
+                    found = true; obs.disconnect(); clearTimeout(timer);
                     el.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
                     resolve();
                 }
             });
             obs.observe(document.body, { childList: true, subtree: true });
-
             document.getElementById(HEADER_ID)?.click();
         });
     }
 
-    // Pokreni dohvat i prosljeđivanje ZIP-a roditeljskom prozoru
     dohvatiPrivitke()
         .then(() => fetchFilesAndCombine(URLovi))
         .catch(e => { console.error('SkiniPodatke:', e); sendError('Greška-' + Date.now()); });
@@ -254,22 +243,33 @@ function SkiniPodatke() {
             'ctl00_ContentPlaceHolder1_apDetails_header_lblDetails'
         ).textContent.match(/\d+/g)[0];
 
-        if (urls.length === 0) {
-            return sendError(`${brojKontakta}-Prazna reppoza`);
-        }
+        if (urls.length === 0) return sendError(`${brojKontakta}-Prazna reppoza`);
         if (!provjeriZareze(urls)) {
             alert('Greška u reppozi, treba slati mail!');
             return sendError(`GreskaUReppozi-${brojKontakta}`);
         }
 
-        const imenaDatoteka = urls.map(okreniStringiSplitaj);
         const zip = new JSZip();
         const dir = zip.folder(brojKontakta);
+
         for (let i = 0; i < urls.length; i++) {
             const r = await fetch(urls[i]);
             if (!r.ok) throw new Error(`HTTP ${r.status} za ${urls[i]}`);
-            dir.file(imenaDatoteka[i], await r.blob());
+
+            // FIX: Content-Disposition za točno ime – rješava + vs space
+            let filename = okreniStringiSplitaj(urls[i]); // fallback
+            const disposition = r.headers.get('Content-Disposition');
+            if (disposition) {
+                const m = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";\n]+)/i);
+                if (m) {
+                    try { filename = decodeURIComponent(m[1].trim().replace(/"/g, '')); }
+                    catch (e) { /* zadrži fallback */ }
+                }
+            }
+
+            dir.file(filename, await r.blob());
         }
+
         window.opener.postMessage(await zip.generateAsync({ type: 'blob' }), targetOrigin);
     }
 }
