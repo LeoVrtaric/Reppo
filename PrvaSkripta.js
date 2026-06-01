@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// PrvaSkripta.js – v3
-//  UX: toolbar (Sve/Ništa/Pokreni + badge), floating progress panel, log
-//  FIX: popup blocker check, watchdog za zatvorene prozore,
-//       eval() → script tag, respondedSet za praćenje prozora
+// PrvaSkripta.js – v4
+//  UX FIX: toolbar omotan u <li> (btlConditions je <ul> – direktni <div>
+//           uzrokuje browser re-render koji makne elemente iz prikaza)
+//  UX FIX: stopImmediatePropagation na svim gumbima
+//  NOVO:   log.txt u ZIP-u – pun zapis svakog koraka za debugging
 // ─────────────────────────────────────────────────────────────────────────────
 
 const scriptUrl = "https://raw.githubusercontent.com/LeoVrtaric/Reppo/main/script.js";
@@ -10,8 +11,11 @@ const scriptUrl = "https://raw.githubusercontent.com/LeoVrtaric/Reppo/main/scrip
 let URLovi = [], openedWindows = [], pristignuliPodaci = [];
 let respondedSet  = new Set();
 let PunaTablica   = '', arrayProzora = [], arrayTablica = [];
+let arrayLabels   = [];          // redoslijed label po kontaktu, za log
 let messageListenerAdded = false, savedImePrezime = '';
 let watchdogId    = null;
+let logLines      = [];          // sve poruke za log.txt
+const logStart    = new Date();
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -20,7 +24,6 @@ function injectStyles() {
     const s = document.createElement('style');
     s.id = 'reppo-styles';
     s.textContent = `
-      /* ── Toolbar ─────────────────────────────────────── */
       #reppo-toolbar {
         display: inline-flex; align-items: center; gap: 6px;
         padding: 6px 2px; font-family: 'Segoe UI', system-ui, sans-serif;
@@ -33,39 +36,29 @@ function injectStyles() {
         letter-spacing: 0.2px;
       }
       #reppo-start-btn {
-        background: #1d4ed8; color: #fff;
-        box-shadow: 0 1px 4px rgba(29,78,216,0.45);
-        padding: 6px 14px;
+        background: #2870ED; color: #fff;
+        box-shadow: 0 1px 4px rgba(29,78,216,0.45); padding: 6px 14px;
       }
       #reppo-start-btn:hover:not(:disabled) {
-        background: #1e40af; box-shadow: 0 2px 8px rgba(29,78,216,0.5);
+        background: #1e5fd4; box-shadow: 0 2px 8px rgba(29,78,216,0.5);
         transform: translateY(-1px);
       }
       #reppo-start-btn:active:not(:disabled) { transform: translateY(0); }
       #reppo-start-btn:disabled { background: #6b7280; cursor: not-allowed; box-shadow: none; opacity: 0.7; }
       #reppo-start-btn.zero-selected { opacity: 0.55; }
-      .reppo-sec {
-        background: #f8fafc; color: #374151;
-        border: 1px solid #d1d5db;
-      }
+      .reppo-sec { background: #f8fafc; color: #374151; border: 1px solid #d1d5db; }
       .reppo-sec:hover { background: #e5e7eb; border-color: #9ca3af; }
       #reppo-badge {
-        background: rgba(255,255,255,0.18);
-        border-radius: 999px; padding: 0 7px;
+        background: rgba(255,255,255,0.18); border-radius: 999px; padding: 0 7px;
         font-size: 11px; font-weight: 700; font-family: 'Consolas', monospace;
         min-width: 20px; text-align: center; letter-spacing: 0;
       }
-      .reppo-divider {
-        width: 1px; height: 22px;
-        background: #e5e7eb; margin: 0 2px;
-      }
-      .rowCheckbox { accent-color: #1d4ed8; cursor: pointer; margin-right: 4px; }
+      .reppo-divider { width: 1px; height: 22px; background: #e5e7eb; margin: 0 2px; }
+      .rowCheckbox { accent-color: #2870ED; cursor: pointer; margin-right: 4px; }
 
-      /* ── Floating Panel ──────────────────────────────── */
       #reppo-panel {
         position: fixed; bottom: 22px; right: 22px; width: 300px;
-        background: #0f172a; color: #e2e8f0;
-        border-radius: 12px;
+        background: #0f172a; color: #e2e8f0; border-radius: 12px;
         box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
         font-family: 'Segoe UI', system-ui, sans-serif;
         font-size: 12px; z-index: 999999; overflow: hidden;
@@ -78,7 +71,7 @@ function injectStyles() {
       #reppo-header {
         display: flex; align-items: center; justify-content: space-between;
         padding: 11px 14px;
-        background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+        background: linear-gradient(135deg, #2870ED 0%, #1a52c4 100%);
         border-bottom: 1px solid rgba(255,255,255,0.08);
       }
       #reppo-header-left {
@@ -86,9 +79,9 @@ function injectStyles() {
         font-weight: 700; font-size: 13px; letter-spacing: 0.3px;
       }
       #reppo-header-icon {
-        width: 20px; height: 20px; background: rgba(255,255,255,0.15);
-        border-radius: 5px; display: flex; align-items: center; justify-content: center;
-        font-size: 11px;
+        width: 20px; height: 20px; background: #fff;
+        border-radius: 4px; display: flex; align-items: center; justify-content: center;
+        font-size: 11px; padding: 2px; box-sizing: border-box;
       }
       #reppo-close-btn {
         background: rgba(255,255,255,0.1); border: none; color: #fff;
@@ -97,45 +90,36 @@ function injectStyles() {
         transition: background 0.15s; padding: 0;
       }
       #reppo-close-btn:hover { background: rgba(255,255,255,0.25); }
-
       #reppo-body { padding: 12px 14px; }
-
       #reppo-status {
         font-size: 11px; color: #94a3b8; margin-bottom: 9px;
         min-height: 15px; display: flex; align-items: center; gap: 6px;
       }
       #reppo-track {
-        background: #1e293b; border-radius: 999px;
-        height: 5px; overflow: hidden; margin-bottom: 5px;
-        border: 1px solid rgba(255,255,255,0.04);
+        background: #1e293b; border-radius: 999px; height: 5px;
+        overflow: hidden; margin-bottom: 5px; border: 1px solid rgba(255,255,255,0.04);
       }
       #reppo-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #2563eb, #60a5fa);
-        border-radius: 999px; width: 0%;
-        transition: width 0.35s ease;
+        height: 100%; background: linear-gradient(90deg, #2870ED, #5a9aff);
+        border-radius: 999px; width: 0%; transition: width 0.35s ease;
       }
-      #reppo-fill.done  { background: linear-gradient(90deg, #059669, #34d399); }
-      #reppo-fill.error { background: #dc2626; }
+      #reppo-fill.done  { background: linear-gradient(90deg, #0cb43f, #2ed65a); }
+      #reppo-fill.error { background: #EB4C79; }
       #reppo-counter {
         text-align: right; font-size: 10px; color: #334155;
         font-family: 'Consolas', monospace; margin-bottom: 9px;
       }
       #reppo-log {
-        max-height: 86px; overflow-y: auto;
-        border-top: 1px solid #1e293b;
-        padding-top: 7px;
-        scrollbar-width: thin; scrollbar-color: #1e293b transparent;
+        max-height: 86px; overflow-y: auto; border-top: 1px solid #1e293b;
+        padding-top: 7px; scrollbar-width: thin; scrollbar-color: #1e293b transparent;
       }
       .rli {
         display: flex; align-items: flex-start; gap: 5px;
         padding: 1px 0; font-size: 11px; color: #475569; line-height: 1.5;
         font-family: 'Consolas', monospace;
       }
-      .rli-ok   { color: #34d399; }
-      .rli-warn { color: #fbbf24; }
-      .rli-err  { color: #f87171; }
-      .rli-info { color: #60a5fa; }
+      .rli-ok   { color: #2ed65a; } .rli-warn { color: #FF6130; }
+      .rli-err  { color: #EB4C79; } .rli-info { color: #5a9aff; }
 
       @keyframes reppo-spin { to { transform: rotate(360deg); } }
       .rspin {
@@ -147,6 +131,55 @@ function injectStyles() {
     document.head.appendChild(s);
 }
 
+// ── Log helpers ───────────────────────────────────────────────────────────────
+
+function logTs() {
+    return new Date().toLocaleTimeString('hr-HR', { hour12: false });
+}
+
+// Upisuje poruku i u UI panel i u logLines array (za log.txt)
+function logZapis(msg, cls = '') {
+    logLines.push(`[${logTs()}] ${msg}`);
+    const log = document.getElementById('reppo-log');
+    if (!log) return;
+    const item = document.createElement('div');
+    item.className = `rli ${cls}`;
+    item.textContent = msg;
+    log.appendChild(item);
+    log.scrollTop = log.scrollHeight;
+}
+
+function generirajLog(imePrezime) {
+    const dt   = logStart.toLocaleString('hr-HR');
+    const kraj = new Date().toLocaleString('hr-HR');
+
+    const ukupno  = pristignuliPodaci.length;
+    const greske  = logLines.filter(l => l.includes('greška') || l.includes('⛔') || l.includes('GREŠKA')).length;
+    const prazne  = logLines.filter(l => l.includes('prazna reppoza')).length;
+    const uspjesno = ukupno - greske - prazne;
+
+    return [
+        '═══════════════════════════════════════════',
+        '              R E P P O   L O G            ',
+        '═══════════════════════════════════════════',
+        `Pokrenuto:    ${dt}`,
+        `Završeno:     ${kraj}`,
+        `Redni broj:   ${RedniBroj}`,
+        `Ime/Prezime:  ${imePrezime || 'N/A'}`,
+        `Kontakata:    ${openedWindows.length} odabrano`,
+        '───────────────────────────────────────────',
+        '',
+        ...logLines,
+        '',
+        '───────────────────────────────────────────',
+        'SAŽETAK',
+        `  Uspješno:   ${uspjesno} kontakata`,
+        `  Prazno:     ${prazne} kontakata`,
+        `  Greška:     ${greske} kontakata`,
+        '═══════════════════════════════════════════',
+    ].join('\r\n');
+}
+
 // ── Panel helpers ─────────────────────────────────────────────────────────────
 
 function pokaziPanel() {
@@ -156,9 +189,13 @@ function pokaziPanel() {
     p.innerHTML = `
       <div id="reppo-header">
         <div id="reppo-header-left">
-          <div id="reppo-header-icon">🗂</div> Reppo
+          <div id="reppo-header-icon">
+            <img src="https://media.licdn.com/dms/image/v2/C4D0BAQG9o5EwvCtcPg/company-logo_200_200/company-logo_200_200/0/1674811052929/erste_bank_croatia_logo?e=2147483647&v=beta&t=vWzh6iqFSrAlG_m9vDg38Ma-G_GPTS9OTewetD0GbPM"
+                 alt="Erste" style="width:14px;height:14px;object-fit:contain;display:block;"
+                 onerror="this.replaceWith('🗂')" />
+          </div> Reppo
         </div>
-        <button id="reppo-close-btn" onclick="this.closest('#reppo-panel').remove()">×</button>
+        <button type="button" id="reppo-close-btn" onclick="this.closest('#reppo-panel').remove()">×</button>
       </div>
       <div id="reppo-body">
         <div id="reppo-status"><span class="rspin"></span> Pokretanje...</div>
@@ -173,9 +210,7 @@ function pokaziPanel() {
 function setStatus(txt, spinner = false) {
     const el = document.getElementById('reppo-status');
     if (!el) return;
-    el.innerHTML = spinner
-        ? `<span class="rspin"></span> ${txt}`
-        : txt;
+    el.innerHTML = spinner ? `<span class="rspin"></span> ${txt}` : txt;
 }
 
 function setProgress(done, total, cls = '') {
@@ -183,16 +218,6 @@ function setProgress(done, total, cls = '') {
     const ctr  = document.getElementById('reppo-counter');
     if (fill) { fill.style.width = total > 0 ? `${Math.round(done / total * 100)}%` : '0%'; fill.className = cls; }
     if (ctr)  ctr.textContent = `${done} / ${total}`;
-}
-
-function addLog(msg, cls = '') {
-    const log = document.getElementById('reppo-log');
-    if (!log) return;
-    const item = document.createElement('div');
-    item.className = `rli ${cls}`;
-    item.textContent = msg;
-    log.appendChild(item);
-    log.scrollTop = log.scrollHeight;
 }
 
 function setGumb(stanje) {
@@ -223,7 +248,8 @@ function resetState() {
     if (messageListenerAdded) { window.removeEventListener('message', handleMessage); messageListenerAdded = false; }
     if (watchdogId) { clearInterval(watchdogId); watchdogId = null; }
     URLovi = []; openedWindows = []; pristignuliPodaci = []; respondedSet = new Set();
-    PunaTablica = ''; arrayProzora = []; arrayTablica = []; savedImePrezime = '';
+    PunaTablica = ''; arrayProzora = []; arrayTablica = []; arrayLabels = [];
+    savedImePrezime = ''; logLines = [];
 }
 
 function UpdateajGumb() {
@@ -242,7 +268,7 @@ function NapraviKvacice() {
         cb.type = 'checkbox'; cb.className = 'rowCheckbox';
         const cell = row.querySelector('td');
         if (cell) cell.insertBefore(cb, cell.firstChild).addEventListener('change', UpdateajGumb);
-        cb.addEventListener('click', e => e.stopPropagation());
+        cb.addEventListener('click', e => { e.stopPropagation(); e.stopImmediatePropagation(); });
     });
 
     const toolbar = document.createElement('div');
@@ -257,25 +283,38 @@ function NapraviKvacice() {
       </button>
     `;
 
-    document.getElementById('ctl00_ContentPlaceHolder1_ReportsData1_btlConditions')
-        .insertBefore(toolbar, document.querySelector('#ctl00_ContentPlaceHolder1_ReportsData1_btlConditions > li'));
+    // FIX: omotavamo toolbar u <li> jer je btlConditions <ul>.
+    // Direktni <div> unutar <ul> je nevažeći HTML – browser ga
+    // premješta van liste i makne sve <li> elemente iz prikaza.
+    const wrapperLi = document.createElement('li');
+    wrapperLi.style.cssText = 'list-style:none; padding:0; margin:0;';
+    wrapperLi.appendChild(toolbar);
 
-    document.getElementById('reppo-all-btn').addEventListener('click', (e) => {
-        e.stopPropagation(); e.preventDefault();
-        document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = true); UpdateajGumb();
+    document.getElementById('ctl00_ContentPlaceHolder1_ReportsData1_btlConditions')
+        .insertBefore(
+            wrapperLi,
+            document.querySelector('#ctl00_ContentPlaceHolder1_ReportsData1_btlConditions > li')
+        );
+
+    // stopImmediatePropagation sprječava sve ostale listenere na elementu
+    document.getElementById('reppo-all-btn').addEventListener('click', e => {
+        e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+        document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = true);
+        UpdateajGumb();
     });
-    document.getElementById('reppo-none-btn').addEventListener('click', (e) => {
-        e.stopPropagation(); e.preventDefault();
-        document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = false); UpdateajGumb();
+    document.getElementById('reppo-none-btn').addEventListener('click', e => {
+        e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+        document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = false);
+        UpdateajGumb();
     });
     document.getElementById('reppo-start-btn').addEventListener('click', e => {
-        e.stopPropagation(); e.preventDefault(); resetState(); continueWithScript();
+        e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+        resetState(); continueWithScript();
     });
 }
 
 // ── Injektiranje skripte ──────────────────────────────────────────────────────
 
-// FIX: script tag umjesto eval()
 function fetchAndEvalScript(prozor) {
     fetch(scriptUrl)
         .then(r => r.text())
@@ -284,13 +323,12 @@ function fetchAndEvalScript(prozor) {
             s.textContent = src;
             prozor.document.head.appendChild(s);
         })
-        .catch(err => { console.error('Greška skripte:', err); addLog('⚠ Greška učitavanja skripte', 'rli-err'); });
+        .catch(err => {
+            console.error('Greška skripte:', err);
+            logZapis('⛔ Greška učitavanja skripte: ' + err.message, 'rli-err');
+        });
 }
 
-// FIX: 'interactive' je dovoljno – DOM spreman čim je HTML parsiran,
-//      ne čekamo AJAX pozive koji mogu visiti minutama.
-//      injected flag sprječava dvostruko injektiranje.
-//      Hard timeout od 20s injektira bez obzira na readyState.
 function cekajIUbaciSkriptu(prozor) {
     let injected = false;
 
@@ -307,19 +345,14 @@ function cekajIUbaciSkriptu(prozor) {
             const url   = prozor.location.href;
             if ((state === 'interactive' || state === 'complete') && url !== 'about:blank') {
                 inject();
-            } else {
-                setTimeout(provjeri, 300);
-            }
-        } catch (e) {
-            setTimeout(provjeri, 300);
-        }
+            } else { setTimeout(provjeri, 300); }
+        } catch (e) { setTimeout(provjeri, 300); }
     };
 
     provjeri();
-    // Sigurnosna mreža – injektiramo nakon 20s bez obzira što se dogodi
     setTimeout(() => {
         if (!injected && !prozor.closed) {
-            addLog('⚠ Timeout – prisilno injektiranje', 'rli-warn');
+            logZapis('⚠ Timeout – prisilno injektiranje', 'rli-warn');
             inject();
         }
     }, 20000);
@@ -341,20 +374,19 @@ function handleMessage(event) {
         } catch (e) { savedImePrezime = 'Nepoznato'; }
     }
 
-    let label = '';
+    let label = `Kontakt #${pristignuliPodaci.length + 1}`;
     try {
-        const kljuc = prozor.document
-            .getElementById('ctl00_ContentPlaceHolder1_apDetails_header_lblDetails').textContent;
-        label = kljuc;
-        arrayTablica.push(prozor.sessionStorage.getItem(kljuc));
+        label = prozor.document
+            .getElementById('ctl00_ContentPlaceHolder1_apDetails_header_lblDetails').textContent.trim();
+        arrayTablica.push(prozor.sessionStorage.getItem(label));
     } catch (e) { arrayTablica.push(''); }
 
+    arrayLabels.push(label);
     pristignuliPodaci.push(event.data);
     arrayProzora.push(prozor);
     prozor.close();
 
     const done = pristignuliPodaci.length, total = openedWindows.length;
-    addLog(`✔ ${label || `Kontakt #${done}`}`, 'rli-ok');
     setProgress(done, total);
     setStatus(`Obrađujem kontakte...  ${done}/${total}`, done < total);
 
@@ -379,14 +411,13 @@ async function continueWithScript() {
     pokaziPanel();
     setGumb('processing');
     setStatus(`Otvaranje ${URLovi.length} prozora...`, true);
-    addLog(`→ Odabrano ${URLovi.length} kontakata`, 'rli-info');
+    logZapis(`→ Pokretanje | ${URLovi.length} kontakata | RedniBroj: ${RedniBroj}`, 'rli-info');
 
     openedWindows = URLovi.map(url => window.open(url, '_blank'));
 
-    // FIX: provjera blokiranih popupa
     if (openedWindows.some(w => !w)) {
         setStatus('⛔ Popupi blokirani!'); setProgress(0, 1, 'error');
-        addLog('Dozvoli popupe za ovu stranicu i pokušaj ponovo', 'rli-err');
+        logZapis('⛔ Popupi blokirani – dozvoli popupe za ovu stranicu', 'rli-err');
         setGumb('idle'); resetState(); return;
     }
 
@@ -394,14 +425,13 @@ async function continueWithScript() {
     openedWindows.forEach(p => cekajIUbaciSkriptu(p));
     window.addEventListener('message', handleMessage); messageListenerAdded = true;
 
-    // FIX: watchdog – reagira na ručno zatvorene prozore
     watchdogId = setInterval(() => {
         const pending = openedWindows.filter(w => !respondedSet.has(w));
         if (pending.length === 0) { clearInterval(watchdogId); watchdogId = null; return; }
         if (pending.every(w => w.closed)) {
             clearInterval(watchdogId); watchdogId = null;
             window.removeEventListener('message', handleMessage); messageListenerAdded = false;
-            addLog(`⚠ ${pending.length} prozora zatvoreno bez odgovora`, 'rli-warn');
+            logZapis(`⚠ ${pending.length} prozora zatvoreno bez odgovora`, 'rli-warn');
             if (pristignuliPodaci.length > 0) { setStatus('Spajam dostupne podatke...', true); spojiSve(pristignuliPodaci); }
             else { setStatus('❌ Nema podataka za obradu'); setProgress(0, 1, 'error'); setGumb('idle'); }
         }
@@ -410,23 +440,53 @@ async function continueWithScript() {
 
 async function spojiSve(blobovi) {
     const JSZip = window.JSZip;
-    if (!JSZip) { console.error('JSZip nije učitan!'); return; }
+    if (!JSZip) { logZapis('⛔ JSZip nije učitan!', 'rli-err'); return; }
 
     const ZadnjiZIP = new JSZip();
     const parentDir = ZadnjiZIP.folder(RedniBroj);
+    let ukupnoDatoteka = 0;
 
     for (let i = 0; i < blobovi.length; i++) {
+        const label = arrayLabels[i] || `Kontakt #${i + 1}`;
         try {
-            const zip = await JSZip.loadAsync(blobovi[i]);
-            await Promise.all(Object.keys(zip.files).map(async path => {
+            const zip     = await JSZip.loadAsync(blobovi[i]);
+            const allKeys = Object.keys(zip.files);
+            const files   = allKeys.filter(p => !zip.files[p].dir);
+
+            const isPrazna = allKeys.some(k => k.includes('Prazna reppoza'));
+            const isGreska = allKeys.some(k => k.includes('GreskaUReppozi') || k.startsWith('Greška-'));
+
+            if (isGreska) {
+                logZapis(`⚠ ${label} – GREŠKA u reppozi`, 'rli-warn');
+            } else if (isPrazna || files.length === 0) {
+                logZapis(`◦ ${label} – prazna reppoza`, 'rli-info');
+            } else {
+                logZapis(`✔ ${label} – ${files.length} dat.`, 'rli-ok');
+                files.forEach(f => {
+                    const name = f.split('/').pop();
+                    logZapis(`    ↳ ${name}`, 'rli-info');
+                });
+                ukupnoDatoteka += files.length;
+            }
+
+            // Kopiraj u finalni ZIP
+            await Promise.all(allKeys.map(async path => {
                 const f = zip.files[path];
-                parentDir[f.dir ? 'folder' : 'file'](path, f.dir ? undefined : await f.async('blob'));
+                if (!f.dir) parentDir.file(path, await f.async('blob'));
+                else parentDir.folder(path);
             }));
-        } catch (e) { console.error(`ZIP ${i + 1}:`, e); addLog(`⚠ Greška pri ZIP-u ${i + 1}`, 'rli-warn'); }
+
+        } catch (e) {
+            logZapis(`⛔ ${label} – ZIP greška: ${e.message}`, 'rli-err');
+            console.error(`ZIP ${i + 1}:`, e);
+        }
     }
 
     const imePrezime = savedImePrezime || 'Nepoznato';
+    logZapis(`↓ Ukupno datoteka: ${ukupnoDatoteka}`, 'rli-info');
+
     parentDir.file(`${RedniBroj} ${imePrezime}.xls`, spojiSveTablice());
+    parentDir.file('log.txt', generirajLog(imePrezime));
 
     const blob = await ZadnjiZIP.generateAsync({ type: 'blob' });
     const url  = URL.createObjectURL(blob);
@@ -435,9 +495,9 @@ async function spojiSve(blobovi) {
     });
     a.click(); a.remove(); URL.revokeObjectURL(url);
 
-    setStatus(`✅ Preuzimanje pokrenuto!`);
+    setStatus('✅ Preuzimanje pokrenuto!');
     setProgress(pristignuliPodaci.length, openedWindows.length, 'done');
-    addLog(`↓ ${RedniBroj}_${imePrezime}.zip`, 'rli-info');
+    logZapis(`✅ ZIP spreman: ${RedniBroj}_${imePrezime}.zip`, 'rli-ok');
     setGumb('done');
 }
 
