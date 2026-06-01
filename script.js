@@ -191,28 +191,56 @@ function SkiniPodatke() {
         return !urlovi.some(u => okreniStringiSplitaj(u).match(/%2c/i));
     }
 
-    // FIX: timeout 10 s + fallback na prazan ZIP
-    function waitForElementToAppear(callback, timeout = 10000) {
-        const obs = new MutationObserver((_, o) => {
-            const el = document.getElementById(
-                'ctl00_ContentPlaceHolder1_apAppendFile_content_ucFileUpload_grdFileDocument');
-            if (el) { o.disconnect(); callback(el); }
+    const TABLE_ID  = 'ctl00_ContentPlaceHolder1_apAppendFile_content_ucFileUpload_grdFileDocument';
+    const HEADER_ID = 'ctl00_ContentPlaceHolder1_apAppendFile_header';
+
+    // FIX: provjeri je li tablica već u DOM-u PRIJE klika.
+    // Problem: header je toggle – ako je sekcija već otvorena, klik bi je ZATVORIO,
+    // a observer nikad ne vidi element koji se pojavljuje (već je bio tamo).
+    async function dohvatiPrivitke() {
+        const existing = document.getElementById(TABLE_ID);
+        if (existing) {
+            // Tablica je već u DOM-u – uzmi direktno, bez klika
+            existing.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
+            return;
+        }
+
+        // Tablica nije u DOM-u – trebamo klik da je učitamo
+        await new Promise(resolve => {
+            let found = false;
+
+            const timer = setTimeout(() => {
+                obs.disconnect();
+                if (!found) {
+                    found = true;
+                    // Zadnji pokušaj direktnog dohvata
+                    const el = document.getElementById(TABLE_ID);
+                    if (el) el.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
+                    else console.warn('Privici nisu pronađeni nakon 10s');
+                    resolve();
+                }
+            }, 10000);
+
+            const obs = new MutationObserver(() => {
+                const el = document.getElementById(TABLE_ID);
+                if (el && !found) {
+                    found = true;
+                    obs.disconnect();
+                    clearTimeout(timer);
+                    el.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
+                    resolve();
+                }
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+
+            document.getElementById(HEADER_ID)?.click();
         });
-        obs.observe(document.body, { childList: true, subtree: true });
-        setTimeout(() => {
-            obs.disconnect();
-            console.warn('Privici nisu pronađeni – šaljem prazan ZIP');
-            callback(null); // null → fetchFilesAndCombine([])
-        }, timeout);
     }
 
-    waitForElementToAppear(async polje => {
-        if (polje) polje.querySelectorAll('td > a').forEach(a => URLovi.push(a.href));
-        try { await fetchFilesAndCombine(URLovi); }
-        catch (e) { console.error('fetchFilesAndCombine:', e); await sendError('Greška-' + Date.now()); }
-    });
-
-    document.getElementById('ctl00_ContentPlaceHolder1_apAppendFile_header').click();
+    // Pokreni dohvat i prosljeđivanje ZIP-a roditeljskom prozoru
+    dohvatiPrivitke()
+        .then(() => fetchFilesAndCombine(URLovi))
+        .catch(e => { console.error('SkiniPodatke:', e); sendError('Greška-' + Date.now()); });
 
     async function fetchFilesAndCombine(urls) {
         const brojKontakta = document.getElementById(
