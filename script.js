@@ -151,7 +151,32 @@ async function TablicaExport() {
             if (idiNaSljedecu()) { await waitForTableUpdate(); await UhvatiSve(); }
             else {
                 const kljuc = document.querySelector('#ctl00_ContentPlaceHolder1_apDetails_header_lblDetails').textContent;
-                sessionStorage.setItem(kljuc, `<table>${allRows.join('')}</table>`.replace(/(\n|\t|<br\s*\/?>)/g, ''));
+                const brojKontakta =
+    document.getElementById(
+        'ctl00_ContentPlaceHolder1_apDetails_header_lblDetails'
+    ).textContent;
+
+const kontaktHeader = `
+<tr>
+    <td colspan="50"
+        style="
+            background:#2870ED;
+            color:#FFFFFF;
+            font-weight:bold;
+            font-size:14px;
+            padding:6px;
+            border:1px solid #2870ED;
+        ">
+        ${brojKontakta}
+    </td>
+</tr>
+`;
+
+sessionStorage.setItem(
+    kljuc,
+    `<table>${kontaktHeader}${allRows.join('')}</table>`
+        .replace(/(\n|\t|<br\s*\/?>)/g, '')
+);
                 resolve();
             }
         }
