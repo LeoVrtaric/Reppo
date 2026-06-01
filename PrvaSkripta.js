@@ -248,10 +248,10 @@ function NapraviKvacice() {
     const toolbar = document.createElement('div');
     toolbar.id = 'reppo-toolbar';
     toolbar.innerHTML = `
-      <button class="reppo-btn reppo-sec" id="reppo-all-btn">☑ Sve</button>
-      <button class="reppo-btn reppo-sec" id="reppo-none-btn">☐ Ništa</button>
+      <button type="button" class="reppo-btn reppo-sec" id="reppo-all-btn">☑ Sve</button>
+      <button type="button" class="reppo-btn reppo-sec" id="reppo-none-btn">☐ Ništa</button>
       <div class="reppo-divider"></div>
-      <button class="reppo-btn zero-selected" id="reppo-start-btn">
+      <button type="button" class="reppo-btn zero-selected" id="reppo-start-btn">
         ▶ <span id="reppo-btn-text">Pokreni</span>
         <span id="reppo-badge">0</span>
       </button>
@@ -260,10 +260,12 @@ function NapraviKvacice() {
     document.getElementById('ctl00_ContentPlaceHolder1_ReportsData1_btlConditions')
         .insertBefore(toolbar, document.querySelector('#ctl00_ContentPlaceHolder1_ReportsData1_btlConditions > li'));
 
-    document.getElementById('reppo-all-btn').addEventListener('click', () => {
+    document.getElementById('reppo-all-btn').addEventListener('click', (e) => {
+        e.stopPropagation(); e.preventDefault();
         document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = true); UpdateajGumb();
     });
-    document.getElementById('reppo-none-btn').addEventListener('click', () => {
+    document.getElementById('reppo-none-btn').addEventListener('click', (e) => {
+        e.stopPropagation(); e.preventDefault();
         document.querySelectorAll('.rowCheckbox').forEach(c => c.checked = false); UpdateajGumb();
     });
     document.getElementById('reppo-start-btn').addEventListener('click', e => {
